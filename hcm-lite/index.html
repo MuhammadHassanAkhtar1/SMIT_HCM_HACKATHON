@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HCM Lite — Sign in</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="auth-wrap">
+    <section class="auth-hero">
+      <div class="brand" style="padding-left:0">
+        <div class="brand-logo">
+          <svg class="ic" viewBox="0 0 24 24"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" fill="currentColor"/></svg>
+        </div>
+        <div>
+          <div class="brand-name">HCM Lite</div>
+          <div class="brand-sub">Human Capital Management</div>
+        </div>
+      </div>
+      <h1 class="hero-title">People operations,<br>beautifully simple.</h1>
+      <p class="hero-sub">
+        Attendance, leave, payroll slips and a smart assistant — all running
+        in your browser with zero backend.
+      </p>
+      <div class="hero-list">
+        <div class="hero-item"><span class="hero-tick">✓</span> Check in / out with automatic late &amp; half-day rules</div>
+        <div class="hero-item"><span class="hero-tick">✓</span> Leave requests with quota and overlap validation</div>
+        <div class="hero-item"><span class="hero-tick">✓</span> Monthly salary slips you can print or save as PDF</div>
+        <div class="hero-item"><span class="hero-tick">✓</span> A smart helper that answers from your real data</div>
+      </div>
+    </section>
+
+    <section class="auth-panel">
+      <div class="auth-card" id="authCard"></div>
+    </section>
+  </div>
+
+  <script src="js/storage.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+  (function () {
+    applyTheme();
+
+    const company = Store.getCompany();
+    const session = Store.getSession();
+    const users = Store.getUsers();
+
+    if (company && session && users.some(u => u.id === session.userId)) {
+      location.replace('pages/' + (session.role === 'admin' ? 'admin.html' : 'employee.html'));
+      return;
+    }
+
+    const card = document.getElementById('authCard');
+    company ? renderLogin() : renderSetup();
+
+    function field(id, label, type = 'text', ph = '', ac = '') {
+      return `<div class="field">
+        <label for="${id}">${label}</label>
+        <input id="${id}" type="${type}" placeholder="${ph}" autocomplete="${ac}">
+        <small class="err" data-err="${id}"></small>
+      </div>`;
+    }
+
+    /* ---- FIRST RUN SETUP ---- */
+    function renderSetup() {
+      card.innerHTML = `
+        <div class="auth-brand">
+          <div class="brand-logo">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" fill="currentColor"/></svg>
+          </div>
+          <div>
+            <div class="auth-brand-name">HCM Lite</div>
+            <div class="auth-brand-sub">First run setup</div>
+          </div>
+        </div>
+        <h2>Create your company</h2>
+        <p class="muted small">This creates the company and the Admin account.</p>
+        <form id="setupForm" class="form-grid" novalidate>
+          ${field('companyName', 'Company name', 'text', 'e.g. Acme Pvt Ltd')}
+          ${field('adminName', 'Admin full name', 'text', 'e.g. Sara Ahmed')}
+          <div class="span-2">${field('email', 'Admin email', 'email', 'you@company.com', 'email')}</div>
+          ${field('password', 'Password', 'password', 'Min 6 characters', 'new-password')}
+          ${field('confirm', 'Confirm password', 'password', 'Repeat password', 'new-password')}
+          <div class="modal-actions">
+            <button class="btn btn-primary btn-block" type="submit">Create company &amp; continue</button>
+          </div>
+        </form>`;
+
+      const form = document.getElementById('setupForm');
+      form.addEventListener('submit', e => {
+        e.preventDefault();
+        const v = id => form.querySelector('#' + id).value.trim();
+        const pwd = form.querySelector('#password').value;
+        const errors = {};
+
+        if (!v('companyName')) errors.companyName = 'Company name is required';
+        if (!v('adminName')) errors.adminName = 'Your name is required';
+        const email = v('email');
+        if (!email) errors.email = 'Email is required';
+        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) errors.email = 'Enter a valid email address';
+        if (!pwd || pwd.length < 6) errors.password = 'Use at least 6 characters';
+        if (pwd !== form.querySelector('#confirm').value) errors.confirm = 'Passwords do not match';
+
+        if (Object.keys(errors).length) return showErrors(form, errors);
+
+        const admin = {
+          id: uid(), name: v('adminName'), email: email.toLowerCase(),
+          password: pwd, role: 'admin', department: 'Administration',
+          salary: 0, joined: todayStr()
+        };
+
+        Store.setCompany({ name: v('companyName'), ...DEFAULT_SETTINGS });
+        Store.setUsers([admin]);
+        Store.setAttendance([]);
+        Store.setLeaves([]);
+        Store.setAnnouncements([]);
+        Store.setSession({ userId: admin.id, role: 'admin', at: Date.now() });
+        location.href = 'pages/admin.html';
+      });
+    }
+
+    /* ---- LOGIN ---- */
+    function renderLogin() {
+      card.innerHTML = `
+        <div class="auth-brand">
+          <div class="brand-logo">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" fill="currentColor"/></svg>
+          </div>
+          <div>
+            <div class="auth-brand-name">HCM Lite</div>
+            <div class="auth-brand-sub">${esc(company.name)}</div>
+          </div>
+        </div>
+        <h2>Welcome back</h2>
+        <p class="muted small">Sign in to your workspace.</p>
+        <form id="loginForm" class="form-grid" novalidate>
+          <div class="span-2">${field('email', 'Email address', 'email', 'you@company.com', 'email')}</div>
+          <div class="span-2">${field('password', 'Password', 'password', '••••••••', 'current-password')}</div>
+          <div class="modal-actions">
+            <button class="btn btn-primary btn-block" type="submit">Sign in</button>
+          </div>
+        </form>
+        <div class="auth-foot">
+          <button class="chip" id="resetBtn" type="button">Reset app data</button>
+        </div>`;
+
+      const form = document.getElementById('loginForm');
+      form.addEventListener('submit', e => {
+        e.preventDefault();
+        const email = form.querySelector('#email').value.trim().toLowerCase();
+        const pwd = form.querySelector('#password').value;
+        const errors = {};
+        if (!email) errors.email = 'Email is required';
+        if (!pwd) errors.password = 'Password is required';
+
+        const user = Store.getUsers().find(u => u.email.toLowerCase() === email && u.password === pwd);
+        if (!errors.email && !errors.password && !user) errors.password = 'Email or password is incorrect';
+        if (Object.keys(errors).length) return showErrors(form, errors);
+
+        Store.setSession({ userId: user.id, role: user.role, at: Date.now() });
+        location.href = 'pages/' + (user.role === 'admin' ? 'admin.html' : 'employee.html');
+      });
+
+      document.getElementById('resetBtn').onclick = () => {
+        if (!confirm('This deletes ALL data in this browser. Continue?')) return;
+        Store.resetAll();
+        location.reload();
+      };
+    }
+  })();
+  </script>
+</body>
+</html>

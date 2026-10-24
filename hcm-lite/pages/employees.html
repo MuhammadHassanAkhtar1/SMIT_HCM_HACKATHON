@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HCM Lite — Employees</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <div class="backdrop" id="backdrop"></div>
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <main class="content">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>Team directory</h2>
+            <p class="muted small" id="countLabel">—</p>
+          </div>
+          <button class="btn btn-primary" id="addBtn" type="button">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Add employee
+          </button>
+        </div>
+
+        <div class="toolbar">
+          <div class="search-box">
+            <input class="input" id="searchInput" placeholder="Search by name or email…" />
+          </div>
+          <select class="input" id="deptFilter" style="max-width:220px"></select>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Employee</th><th>Department</th><th>Salary</th><th>Joined</th><th class="right">Actions</th></tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../js/storage.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/attendance.js"></script>
+  <script src="../js/leave.js"></script>
+  <script src="../js/employees.js"></script>
+</body>
+</html>

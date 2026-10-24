@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HCM Lite — Admin Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <div class="backdrop" id="backdrop"></div>
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <main class="content">
+      <section class="grid stats" id="statsRow"></section>
+
+      <section class="grid cols">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>Today's attendance</h2>
+              <p class="muted small" id="todayLabel"></p>
+            </div>
+            <a class="btn btn-ghost btn-sm" href="leaves.html">Leave requests</a>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Employee</th><th>Check in</th><th>Check out</th><th>Hours</th><th>Status</th></tr>
+              </thead>
+              <tbody id="attRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>Smart helper</h2>
+              <p class="muted small">Answers straight from your live data</p>
+            </div>
+          </div>
+          <div id="helperBox" class="helper"></div>
+        </div>
+      </section>
+
+      <section class="grid cols">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>Pending leave requests</h2>
+              <p class="muted small">Approve or reject with a comment</p>
+            </div>
+            <a class="btn btn-ghost btn-sm" href="leaves.html">View all</a>
+          </div>
+          <div class="list" id="pendingList"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>Announcements</h2>
+              <p class="muted small">Posted to everyone's dashboard</p>
+            </div>
+          </div>
+          <form class="row" id="annForm" autocomplete="off">
+            <input class="input" id="annInput" maxlength="160" placeholder="Write an announcement…" style="flex:1" />
+            <button class="btn btn-primary" type="submit">Post</button>
+          </form>
+          <div class="list" id="annList"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="../js/storage.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/attendance.js"></script>
+  <script src="../js/leave.js"></script>
+  <script src="../js/helper.js"></script>
+  <script>
+  (function () {
+    applyTheme();
+    const admin = guard('admin');
+    if (!admin) return;
+
+    const company = Store.getCompany() || {};
+    const today = todayStr();
+
+    renderShell('dashboard', 'Dashboard', 'Company overview · ' + fmtDate(today));
+    initHelper(admin);
+    renderStats();
+    renderAttendance();
+    renderPending();
+    renderAnnouncements();
+
+    function renderStats() {
+      const users = Store.getUsers();
+      const employees = users.filter(u => u.role === 'employee');
+      const recs = recordsOn(today);
+      const late = recs.filter(r => r.late).length;
+      const onLeave = leavesOn(today).length;
+      const pending = pendingLeaves().length;
+
+      document.getElementById('statsRow').innerHTML = `
+        <div class="stat v1"><div class="stat-ico">${icon('users')}</div>
+          <div class="stat-val">${employees.length}</div><div class="stat-lbl">Total employees</div></div>
+        <div class="stat v2"><div class="stat-ico">${icon('check')}</div>
+          <div class="stat-val">${recs.length}</div><div class="stat-lbl">Checked in today</div></div>
+        <div class="stat v3"><div class="stat-ico">${icon('clock')}</div>
+          <div class="stat-val">${late}</div><div class="stat-lbl">Late today</div></div>
+        <div class="stat v4"><div class="stat-ico">${icon('calendar')}</div>
+          <div class="stat-val">${onLeave}</div><div class="stat-lbl">On leave today</div></div>
+        <div class="stat v5"><div class="stat-ico">${icon('speaker')}</div>
+          <div class="stat-val">${pending}</div><div class="stat-lbl">Pending leaves</div></div>`;
+    }
+
+    function renderAttendance() {
+      const employees = Store.getUsers().filter(u => u.role === 'employee');
+      const tbody = document.getElementById('attRows');
+      const label = document.getElementById('todayLabel');
+
+      label.textContent = isWorkingDay(today, company)
+        ? fmtDate(today) + ' · working day'
+        : fmtDate(today) + ' · day off';
+
+      if (!employees.length) {
+        tbody.innerHTML = `<tr><td colspan="5">
+          <div class="empty">No employees yet. Add your first employee from the Employees page.</div>
+        </td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = employees.map(emp => {
+        const st = dayStatus(emp.id, today, company);
+        const r = st.record;
+        return `<tr>
+          <td><div class="cell-user">
+            <div class="avatar" style="width:32px;height:32px;border-radius:10px;font-size:.7rem">
+              ${esc(emp.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase())}
+            </div>
+            <div><strong>${esc(emp.name)}</strong><span>${esc(emp.department)}</span></div>
+          </div></td>
+          <td>${r ? fmtTime(r.in) : '—'}</td>
+          <td>${r && r.out ? fmtTime(r.out) : '—'}</td>
+          <td>${r && r.hours ? r.hours + ' h' : '—'}</td>
+          <td><span class="badge ${st.key}">${st.label}</span></td>
+        </tr>`;
+      }).join('');
+    }
+
+    function renderPending() {
+      const list = document.getElementById('pendingList');
+      const pending = pendingLeaves().slice(0, 5);
+
+      if (!pending.length) {
+        list.innerHTML = `<div class="empty">No pending requests. Everything is up to date ✅</div>`;
+        return;
+      }
+
+      list.innerHTML = pending.map(l => `
+        <div class="list-item">
+          <div>
+            <strong>${esc(userName(l.empId))}</strong>
+            <div class="meta">${esc(l.type)} · ${fmtDateShort(l.from)} → ${fmtDateShort(l.to)} · ${l.days} day(s)</div>
+          </div>
+          <div class="row">
+            <button class="btn btn-success btn-sm" data-approve="${l.id}">Approve</button>
+            <button class="btn btn-danger btn-sm" data-reject="${l.id}">Reject</button>
+          </div>
+        </div>`).join('');
+
+      list.querySelectorAll('[data-approve]').forEach(b => b.onclick = () => decide(b.dataset.approve, 'approved'));
+      list.querySelectorAll('[data-reject]').forEach(b => b.onclick = () => decide(b.dataset.reject, 'rejected'));
+    }
+
+    function decide(id, status) {
+      const comment = prompt(
+        (status === 'approved' ? 'Approve' : 'Reject') + ' this request. Add a comment (optional):',
+        status === 'approved' ? 'Approved.' : 'Not approved.');
+      if (comment === null) return;
+
+      const res = decideLeave(id, status, comment);
+      if (!res.ok) return toast(res.message, 'error');
+
+      toast('Leave ' + status);
+      renderStats();
+      renderPending();
+    }
+
+    function renderAnnouncements() {
+      const list = document.getElementById('annList');
+      const items = Store.getAnnouncements().slice().reverse().slice(0, 6);
+      list.innerHTML = items.length
+        ? items.map(a => `
+          <div class="list-item">
+            <div><strong>${esc(a.text)}</strong><div class="meta">${fmtDate(a.date)}</div></div>
+            <span class="badge off">Pinned</span>
+          </div>`).join('')
+        : `<div class="empty">No announcements posted yet.</div>`;
+    }
+
+    document.getElementById('annForm').addEventListener('submit', e => {
+      e.preventDefault();
+      const input = document.getElementById('annInput');
+      const text = input.value.trim();
+      if (!text) return toast('Write something first', 'error');
+      const all = Store.getAnnouncements();
+      all.push({ id: uid(), text, date: todayStr(), by: admin.id });
+      Store.setAnnouncements(all);
+      input.value = '';
+      renderAnnouncements();
+      toast('Announcement posted');
+    });
+  })();
+  </script>
+</body>
+</html>

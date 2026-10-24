@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HCM Lite — Settings</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <div class="backdrop" id="backdrop"></div>
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <main class="content">
+      <div class="grid cols-2">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>Company settings</h2>
+              <p class="muted small">These rules drive attendance, leave and payroll</p>
+            </div>
+          </div>
+
+          <form id="settingsForm" class="form-grid" novalidate>
+            <div class="field span-2">
+              <label for="cName">Company name</label>
+              <input id="cName" placeholder="e.g. Acme Pvt Ltd">
+              <small class="err" data-err="name"></small>
+            </div>
+            <div class="field">
+              <label for="cStart">Office start time</label>
+              <input id="cStart" type="time">
+              <small class="err" data-err="start"></small>
+            </div>
+            <div class="field">
+              <label for="cGrace">Grace minutes</label>
+              <input id="cGrace" type="number" min="0" max="120">
+              <small class="err" data-err="grace"></small>
+            </div>
+            <div class="field">
+              <label for="cQuota">Yearly leave quota (days)</label>
+              <input id="cQuota" type="number" min="0" max="365">
+              <small class="err" data-err="quota"></small>
+            </div>
+            <div class="field">
+              <label for="cHalf">Half day below (hours)</label>
+              <input id="cHalf" type="number" min="1" max="12">
+              <small class="err" data-err="half"></small>
+            </div>
+            <div class="field span-2">
+              <label>Working days</label>
+              <div class="row" id="dayPicker"></div>
+              <small class="err" data-err="days"></small>
+            </div>
+            <div class="modal-actions">
+              <button class="btn btn-primary" type="submit">Save settings</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>Account</h2>
+              <p class="muted small">Signed in as Administrator</p>
+            </div>
+          </div>
+          <div class="list">
+            <div class="list-item">
+              <div><strong>Password</strong><div class="meta">Change your login password</div></div>
+              <button class="btn btn-ghost btn-sm" id="pwdLink" type="button">Change</button>
+            </div>
+            <div class="list-item">
+              <div><strong>Sign out</strong><div class="meta">End this session on this device</div></div>
+              <button class="btn btn-ghost btn-sm" id="logoutLink" type="button">Logout</button>
+            </div>
+            <div class="list-item" style="border-color:#fecaca">
+              <div><strong>Reset application</strong><div class="meta">Deletes all local data in this browser</div></div>
+              <button class="btn btn-danger btn-sm" id="resetBtn" type="button">Reset</button>
+            </div>
+          </div>
+          <p class="muted small">
+            All data is stored in this browser's <code>localStorage</code>. Nothing is sent to a server.
+          </p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../js/storage.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/attendance.js"></script>
+  <script src="../js/leave.js"></script>
+  <script>
+  (function () {
+    applyTheme();
+    const admin = guard('admin');
+    if (!admin) return;
+
+    renderShell('settings', 'Settings', 'Company rules, working days and your account');
+
+    const c = Store.getCompany() || {};
+    const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const selected = new Set((c.workingDays || [1, 2, 3, 4, 5]).map(Number));
+
+    document.getElementById('cName').value = c.name || '';
+    document.getElementById('cStart').value = c.startTime || '09:00';
+    document.getElementById('cGrace').value = c.graceMinutes ?? 15;
+    document.getElementById('cQuota').value = c.leaveQuota ?? 20;
+    document.getElementById('cHalf').value = c.halfDayHours ?? 5;
+
+    const picker = document.getElementById('dayPicker');
+    picker.innerHTML = DAYS.map((d, i) =>
+      `<button type="button" class="chip ${selected.has(i) ? 'active' : ''}" data-day="${i}"
+               style="${selected.has(i) ? 'background:var(--primary);color:#fff;border-color:transparent' : ''}">
+        ${d}
+      </button>`).join('');
+
+    picker.querySelectorAll('[data-day]').forEach(btn => {
+      btn.onclick = () => {
+        const d = Number(btn.dataset.day);
+        if (selected.has(d)) { selected.delete(d); btn.style.cssText = ''; }
+        else { selected.add(d); btn.style.cssText = 'background:var(--primary);color:#fff;border-color:transparent'; }
+      };
+    });
+
+    document.getElementById('settingsForm').addEventListener('submit', e => {
+      e.preventDefault();
+      const form = e.target;
+      const name = form.querySelector('#cName').value.trim();
+      const start = form.querySelector('#cStart').value;
+      const grace = Number(form.querySelector('#cGrace').value);
+      const quota = Number(form.querySelector('#cQuota').value);
+      const half = Number(form.querySelector('#cHalf').value);
+
+      const errors = {};
+      if (!name) errors.name = 'Company name is required';
+      if (!start) errors.start = 'Start time is required';
+      if (!(grace >= 0)) errors.grace = 'Grace must be 0 or more';
+      if (!(quota >= 0)) errors.quota = 'Quota must be 0 or more';
+      if (!(half > 0)) errors.half = 'Half-day hours must be above 0';
+      if (!selected.size) errors.days = 'Pick at least one working day';
+
+      if (Object.keys(errors).length) return showErrors(form, errors);
+
+      Store.setCompany({
+        name, startTime: start, graceMinutes: grace,
+        leaveQuota: quota, halfDayHours: half,
+        workingDays: [...selected].sort()
+      });
+      toast('Settings saved');
+      setTimeout(() => location.reload(), 600);
+    });
+
+    document.getElementById('pwdLink').onclick = openChangePassword;
+    document.getElementById('logoutLink').onclick = logout;
+    document.getElementById('resetBtn').onclick = () => {
+      if (!confirm('This deletes ALL data in this browser. Continue?')) return;
+      Store.resetAll();
+      location.href = '../index.html';
+    };
+  })();
+  </script>
+</body>
+</html>

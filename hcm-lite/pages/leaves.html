@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HCM Lite — Leave Requests</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <div class="backdrop" id="backdrop"></div>
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <main class="content">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>Leave requests</h2>
+            <p class="muted small" id="countLabel">—</p>
+          </div>
+          <div class="tabs" id="tabs">
+            <button class="tab active" data-status="all" type="button">All</button>
+            <button class="tab" data-status="pending" type="button">Pending</button>
+            <button class="tab" data-status="approved" type="button">Approved</button>
+            <button class="tab" data-status="rejected" type="button">Rejected</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Employee</th><th>Type</th><th>Dates</th><th>Days</th><th>Reason</th><th>Status</th><th class="right">Actions</th></tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../js/storage.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/attendance.js"></script>
+  <script src="../js/leave.js"></script>
+  <script>
+  (function () {
+    applyTheme();
+    const admin = guard('admin');
+    if (!admin) return;
+
+    renderShell('leaves', 'Leave Requests', 'Approve or reject with a comment');
+
+    let filter = 'all';
+    const rowsEl = document.getElementById('rows');
+    const countEl = document.getElementById('countLabel');
+
+    document.querySelectorAll('#tabs .tab').forEach(tab => {
+      tab.onclick = () => {
+        document.querySelectorAll('#tabs .tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        filter = tab.dataset.status;
+        render();
+      };
+    });
+
+    render();
+
+    function render() {
+      const all = Store.getLeaves().slice().sort((a, b) => (b.appliedAt || '').localeCompare(a.appliedAt || ''));
+      const list = filter === 'all' ? all : all.filter(l => l.status === filter);
+      countEl.textContent = `${list.length} request(s)${filter !== 'all' ? ' · ' + filter : ''}`;
+
+      if (!list.length) {
+        rowsEl.innerHTML = `<tr><td colspan="7"><div class="empty">No leave requests in this view.</div></td></tr>`;
+        return;
+      }
+
+      rowsEl.innerHTML = list.map(l => `
+        <tr>
+          <td><div class="cell-user">
+            <div class="avatar" style="width:32px;height:32px;border-radius:10px;font-size:.7rem">
+              ${esc(userName(l.empId).split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase())}
+            </div>
+            <div><strong>${esc(userName(l.empId))}</strong></div>
+          </div></td>
+          <td>${esc(l.type)}</td>
+          <td>${fmtDateShort(l.from)} → ${fmtDateShort(l.to)}</td>
+          <td>${l.days}</td>
+          <td style="max-width:220px">${esc(l.reason)}</td>
+          <td>
+            <span class="badge ${l.status}">${l.status}</span>
+            ${l.comment ? `<div class="muted small" style="margin-top:4px">“${esc(l.comment)}”</div>` : ''}
+          </td>
+          <td class="right">
+            ${l.status === 'pending'
+              ? `<button class="btn btn-success btn-sm" data-approve="${l.id}">Approve</button>
+                 <button class="btn btn-danger btn-sm" data-reject="${l.id}">Reject</button>`
+              : `<span class="muted small">—</span>`}
+          </td>
+        </tr>`).join('');
+
+      rowsEl.querySelectorAll('[data-approve]').forEach(b => b.onclick = () => openDecision(b.dataset.approve, 'approved'));
+      rowsEl.querySelectorAll('[data-reject]').forEach(b => b.onclick = () => openDecision(b.dataset.reject, 'rejected'));
+    }
+
+    function openDecision(id, status) {
+      const leave = Store.getLeaves().find(l => l.id === id);
+      if (!leave) return;
+
+      openModal((status === 'approved' ? 'Approve' : 'Reject') + ' leave request', `
+        <div class="list-item">
+          <div>
+            <strong>${esc(userName(leave.empId))}</strong>
+            <div class="meta">${esc(leave.type)} · ${fmtDate(leave.from)} → ${fmtDate(leave.to)} · ${leave.days} day(s)</div>
+          </div>
+          <span class="badge pending">pending</span>
+        </div>
+        <div class="field">
+          <label for="cmt">Comment to the employee</label>
+          <textarea id="cmt" placeholder="Add a short note…"></textarea>
+          <small class="err" data-err="cmt"></small>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+          <button type="button" class="btn ${status === 'approved' ? 'btn-success' : 'btn-danger'}" id="confirmBtn">
+            Confirm ${status}
+          </button>
+        </div>`);
+
+      document.getElementById('confirmBtn').onclick = () => {
+        const comment = document.getElementById('cmt').value.trim();
+        const res = decideLeave(id, status, comment);
+        if (!res.ok) { setFieldError(document.querySelector('.modal'), 'cmt', res.message); return; }
+        closeModal();
+        toast('Leave ' + status);
+        render();
+      };
+    }
+  })();
+  </script>
+</body>
+</html>

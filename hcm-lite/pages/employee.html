@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HCM Lite — My Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <div class="backdrop" id="backdrop"></div>
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <main class="content">
+      <section class="hero-card">
+        <div>
+          <h2 id="heroGreeting">Good day</h2>
+          <p id="heroSub">—</p>
+          <div class="hero-times">
+            <div><span>Check in</span><strong id="heroIn">—</strong></div>
+            <div><span>Check out</span><strong id="heroOut">—</strong></div>
+            <div><span>Hours</span><strong id="heroHours">—</strong></div>
+            <div><span>Status</span><strong id="heroStatus">—</strong></div>
+          </div>
+        </div>
+        <div class="row" id="heroActions"></div>
+      </section>
+
+      <section class="grid stats" id="statsRow"></section>
+
+      <section class="grid cols">
+        <div class="card">
+          <div class="card-head">
+            <div><h2>My attendance</h2><p class="muted small">This month</p></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Date</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th></tr>
+              </thead>
+              <tbody id="attRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>Apply for leave</h2>
+              <p class="muted small" id="balanceLabel">—</p>
+            </div>
+          </div>
+          <form id="leaveForm" class="form-grid" novalidate>
+            <div class="field span-2">
+              <label for="lType">Leave type</label>
+              <select id="lType"></select>
+              <small class="err" data-err="type"></small>
+            </div>
+            <div class="field">
+              <label for="lFrom">From</label>
+              <input id="lFrom" type="date">
+              <small class="err" data-err="from"></small>
+            </div>
+            <div class="field">
+              <label for="lTo">To</label>
+              <input id="lTo" type="date">
+              <small class="err" data-err="to"></small>
+            </div>
+            <div class="field span-2">
+              <label for="lReason">Reason</label>
+              <textarea id="lReason" placeholder="Short reason for the request…"></textarea>
+              <small class="err" data-err="reason"></small>
+            </div>
+            <div class="modal-actions">
+              <span class="muted small" id="daysPreview" style="margin-right:auto"></span>
+              <button class="btn btn-primary" type="submit">Submit request</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="grid cols">
+        <div class="card">
+          <div class="card-head">
+            <div><h2>My leave requests</h2><p class="muted small">Status and admin comments</p></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Type</th><th>Dates</th><th>Days</th><th>Status</th><th>Comment</th></tr>
+              </thead>
+              <tbody id="leaveRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div><h2>Smart helper</h2><p class="muted small">Answers from your own records</p></div>
+          </div>
+          <div id="helperBox" class="helper"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div><h2>Announcements</h2><p class="muted small">From the Admin</p></div>
+        </div>
+        <div class="list" id="annList"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="../js/storage.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/attendance.js"></script>
+  <script src="../js/leave.js"></script>
+  <script src="../js/helper.js"></script>
+  <script>
+  (function () {
+    applyTheme();
+    const user = guard('employee');
+    if (!user) return;
+
+    const company = Store.getCompany() || {};
+    const today = todayStr();
+
+    renderShell('dashboard', 'My Dashboard',
+      'Welcome back, ' + user.name.split(' ')[0] + ' · ' + fmtDate(today));
+
+    const typeSelect = document.getElementById('lType');
+    typeSelect.innerHTML = `<option value="">Select type…</option>` +
+      LEAVE_TYPES.map(t => `<option>${t}</option>`).join('');
+
+    initHelper(user);
+    renderHero();
+    renderStats();
+    renderAttendance();
+    renderLeaves();
+    renderAnnouncements();
+
+    function renderHero() {
+      const rec = getRecord(user.id, today);
+      const hour = new Date().getHours();
+      const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
+      document.getElementById('heroGreeting').textContent = `${greeting}, ${user.name.split(' ')[0]} 👋`;
+      document.getElementById('heroIn').textContent = rec ? fmtTime(rec.in) : '—';
+      document.getElementById('heroOut').textContent = rec && rec.out ? fmtTime(rec.out) : '—';
+      document.getElementById('heroHours').textContent = rec && rec.hours ? rec.hours + ' h' : '—';
+
+      const st = dayStatus(user.id, today, company);
+      document.getElementById('heroStatus').textContent = st.label;
+      document.getElementById('heroSub').textContent = isWorkingDay(today, company)
+        ? `Office starts at ${fmtTime(company.startTime)} · ${company.graceMinutes} min grace`
+        : 'Today is a day off — enjoy!';
+
+      const actions = document.getElementById('heroActions');
+      if (!rec) {
+        actions.innerHTML = `<button class="btn btn-primary" id="inBtn" type="button">Check in now</button>`;
+        document.getElementById('inBtn').onclick = () => {
+          const res = checkIn(user.id);
+          if (!res.ok) return toast(res.message, 'error');
+          toast('Checked in at ' + fmtTime(res.record.in));
+          refreshAll();
+        };
+      } else if (!rec.out) {
+        actions.innerHTML = `<button class="btn btn-success" id="outBtn" type="button">Check out</button>`;
+        document.getElementById('outBtn').onclick = () => {
+          const res = checkOut(user.id);
+          if (!res.ok) return toast(res.message, 'error');
+          toast('Checked out — ' + res.record.hours + ' h worked');
+          refreshAll();
+        };
+      } else {
+        actions.innerHTML = `<span class="badge present">Day complete</span>`;
+      }
+    }
+
+    function renderStats() {
+      const bal = leaveBalance(user.id);
+      const mine = recordsFor(user.id).filter(r => r.date.startsWith(monthKey()));
+      const present = mine.filter(r => r.status !== 'half-day').length;
+      const late = mine.filter(r => r.late).length;
+      const half = mine.filter(r => r.status === 'half-day').length;
+
+      document.getElementById('statsRow').innerHTML = `
+        <div class="stat v1"><div class="stat-ico">${icon('calendar')}</div>
+          <div class="stat-val">${bal.left}</div><div class="stat-lbl">Leaves left / ${bal.quota}</div></div>
+        <div class="stat v2"><div class="stat-ico">${icon('check')}</div>
+          <div class="stat-val">${present}</div><div class="stat-lbl">Present this month</div></div>
+        <div class="stat v3"><div class="stat-ico">${icon('clock')}</div>
+          <div class="stat-val">${late}</div><div class="stat-lbl">Late this month</div></div>
+        <div class="stat v4"><div class="stat-ico">${icon('chart')}</div>
+          <div class="stat-val">${half}</div><div class="stat-lbl">Half days</div></div>`;
+
+      document.getElementById('balanceLabel').textContent =
+        `${bal.left} of ${bal.quota} leave days remaining`;
+    }
+
+    function renderAttendance() {
+      const rows = recordsFor(user.id).filter(r => r.date.startsWith(monthKey())).slice(0, 31);
+      const tbody = document.getElementById('attRows');
+
+      if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="5">
+          <div class="empty">No attendance yet this month. Check in above to start.</div>
+        </td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = rows.map(r => `
+        <tr>
+          <td>${fmtDate(r.date)}</td>
+          <td>${fmtTime(r.in)}</td>
+          <td>${r.out ? fmtTime(r.out) : '—'}</td>
+          <td>${r.hours ? r.hours + ' h' : '—'}</td>
+          <td><span class="badge ${r.status}">${labelForStatus(r.status)}</span></td>
+        </tr>`).join('');
+    }
+
+    function renderLeaves() {
+      const list = leavesFor(user.id);
+      const tbody = document.getElementById('leaveRows');
+      if (!list.length) {
+        tbody.innerHTML = `<tr><td colspan="5">
+          <div class="empty">You have not applied for any leave yet.</div>
+        </td></tr>`;
+        return;
+      }
+      tbody.innerHTML = list.map(l => `
+        <tr>
+          <td>${esc(l.type)}</td>
+          <td>${fmtDateShort(l.from)} → ${fmtDateShort(l.to)}</td>
+          <td>${l.days}</td>
+          <td><span class="badge ${l.status}">${l.status}</span></td>
+          <td class="muted small">${l.comment ? esc(l.comment) : '—'}</td>
+        </tr>`).join('');
+    }
+
+    function renderAnnouncements() {
+      const items = Store.getAnnouncements().slice().reverse().slice(0, 6);
+      document.getElementById('annList').innerHTML = items.length
+        ? items.map(a => `
+          <div class="list-item">
+            <div><strong>${esc(a.text)}</strong><div class="meta">${fmtDate(a.date)}</div></div>
+          </div>`).join('')
+        : `<div class="empty">No announcements yet.</div>`;
+    }
+
+    /* ---- leave form ---- */
+    const form = document.getElementById('leaveForm');
+    const fromEl = form.querySelector('#lFrom');
+    const toEl = form.querySelector('#lTo');
+    const preview = document.getElementById('daysPreview');
+
+    function updatePreview() {
+      if (!fromEl.value || !toEl.value) return (preview.textContent = '');
+      const days = countWorkingDays(fromEl.value, toEl.value, company);
+      preview.textContent = days > 0 ? `${days} working day(s)` : 'No working days selected';
+    }
+    fromEl.addEventListener('change', updatePreview);
+    toEl.addEventListener('change', updatePreview);
+
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const res = applyLeave({
+        empId: user.id, type: typeSelect.value,
+        from: fromEl.value, to: toEl.value,
+        reason: form.querySelector('#lReason').value
+      });
+      if (!res.ok) return showErrors(form, res.errors);
+
+      toast(`Leave request sent — ${res.days} working day(s)`);
+      form.reset();
+      preview.textContent = '';
+      clearErrors(form);
+      renderLeaves();
+      renderStats();
+    });
+
+    function refreshAll() {
+      renderHero();
+      renderStats();
+      renderAttendance();
+    }
+  })();
+  </script>
+</body>
+</html>

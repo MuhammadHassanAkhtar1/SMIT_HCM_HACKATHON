@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HCM Lite — Payslip</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <div class="backdrop" id="backdrop"></div>
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <main class="content">
+      <div class="card no-print">
+        <div class="card-head">
+          <div>
+            <h2>Salary slip</h2>
+            <p class="muted small">Pick a month, then print or save as PDF</p>
+          </div>
+          <button class="btn btn-primary" id="printBtn" type="button">Print / Save PDF</button>
+        </div>
+
+        <div class="toolbar">
+          <div class="field" id="empWrap" style="flex:1 1 260px">
+            <label for="empSelect">Employee</label>
+            <select id="empSelect"></select>
+          </div>
+          <div class="field" style="flex:0 1 220px">
+            <label for="monthInput">Month</label>
+            <input id="monthInput" type="month">
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="slipCard"></div>
+    </main>
+  </div>
+
+  <script src="../js/storage.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/attendance.js"></script>
+  <script src="../js/leave.js"></script>
+  <script src="../js/payslip.js"></script>
+</body>
+</html>
